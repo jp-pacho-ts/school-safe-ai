@@ -1,7 +1,7 @@
 # School Safe AI — Basic Competition Version
 
-Phases 1 and 2 provide the project foundation and database. Reporting, teacher dashboards,
-notification delivery, status tracking, and the full home page are scheduled for later phases.
+Phases 1–3 provide the project foundation, database, and responsive home page.
+Student reporting, teacher dashboards, notification delivery, and status tracking remain scheduled for later phases.
 [PLAN.md](PLAN.md) is the active progress tracker; [AGENTS.md](AGENTS.md) defines the scope.
 
 ## Stack
@@ -27,7 +27,7 @@ npm run db:check
 npm run dev
 ```
 
-Open http://localhost:3000. The page is a development placeholder and does not accept reports.
+Open http://localhost:3000. The home page explains the project and planned reporting flow, with safety guidance and a reporting/support section. Online reporting is coming soon; the site does not accept reports yet.
 
 `db:start` finds PostgreSQL 18 under the standard Windows installation directory,
 then checks PATH. Set `PG_BIN` to your PostgreSQL bin directory for another installation.
@@ -62,7 +62,7 @@ Database values are server-only and must not use the `NEXT_PUBLIC_` prefix.
 
 Next.js, Prisma configuration, and the database check load environment files through
 `@next/env`, including Next.js's `.env.local` precedence. CLI/database checks default to development mode; set `NODE_ENV=production` explicitly to check a production setup.
-Client generation and the placeholder build do not require a running database.
+Client generation and the home page build do not require a running database.
 Database access validates the environment with Zod before creating a client.
 
 ## Commands
@@ -155,7 +155,8 @@ Use `npm run test:unit` when checking only environment validation without a data
 ## Structure
 
 ```text
-app/                  App Router layout, global styles, and placeholder page
+app/                  App Router layout, metadata/icon, global styles, and home page
+components/home/      Landing-page styles, mobile navigation, and school illustration
 components/ui/        Reusable shadcn/ui components
 lib/                  Shared utilities and server-only environment/Prisma access
 prisma/               Domain schema, versioned SQL migration, and fictional demo seed
@@ -173,6 +174,22 @@ Import the database client from `@/lib/prisma` only in server code. The client i
 cached during development to avoid new pools on every hot reload; it does not log
 queries. Import `cn` from `@/lib/utils` for Tailwind class composition.
 Add UI primitives as needed with `npx shadcn@latest add <component>`.
+
+## Home page
+
+The landing page includes the project purpose, a preview of the reporting workflow,
+safety guidance, a reporting/support CTA, and footer links. CTAs navigate to real
+homepage sections; feature routes and report submission are not implemented yet.
+
+The page uses server-rendered content, a small client navigation disclosure, scoped
+responsive styles, local SVG art, and system fonts. It includes a skip link, visible
+focus indicators, accessible navigation labels, and Escape-to-close menu behavior.
+The narrow-screen CTA can wrap to accommodate small screens and enlarged text.
+
+Lint, TypeScript, all 21 existing tests, production build, and HTTP/asset checks pass.
+Text contrast and responsive/accessibility source review are complete. Browser
+rendering and actual keyboard/mobile interaction still need verification because no
+browser was available in the development session; see PLAN.md for the follow-up checks.
 
 ## Dependency maintenance
 
@@ -200,8 +217,8 @@ because Prisma issues included relation reads concurrently on a transaction clie
 Application calls are awaited and all tests pass. The current dependency range
 excludes pg 9; reassess this upstream warning when upgrading Prisma or the driver.
 
-See [PLAN.md](PLAN.md) for the recorded results. This workspace initially had no
-`.git` metadata, so review uses direct file inspection until Git is initialized.
+See [PLAN.md](PLAN.md) for the recorded results. Review uses Git diff for tracked
+changes and direct inspection of newly created files and local planning documents.
 
 Configuration references: [Prisma generation](https://docs.prisma.io/docs/cli/v7/generate),
 [shadcn configuration](https://ui.shadcn.com/docs/components-json), and
