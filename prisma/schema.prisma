@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum IncidentType {
+  BULLYING
+  CYBERBULLYING
+  HARASSMENT
+  VIOLENCE
+  THEFT
+  VANDALISM
+  SAFETY_CONCERN
+  OTHER
+}
+
+enum ReportStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  ACTION_TAKEN
+  RESOLVED
+  DISMISSED
+}
+
+enum NotificationType {
+  NEW_REPORT
+  STATUS_UPDATED
+}
+
+model User {
+  id            String                @id @default(cuid())
+  email         String                @unique @db.VarChar(254)
+  name          String                @db.VarChar(100)
+  role          UserRole              @default(STUDENT)
+  createdAt     DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime              @updatedAt @db.Timestamptz(3)
+  reports       Report[]
+  statusChanges ReportStatusHistory[]
+  notifications Notification[]
+
+  @@index([role])
+}
+
+model Report {
+  id              String                @id @default(cuid())
+  /// Unique lookup reference; random reference generation belongs to Phase 4.
+  referenceNumber String                @unique @db.VarChar(32)
+  incidentType    IncidentType
+  description     String                @db.Text
+  location        String                @db.VarChar(200)
+  incidentDate    DateTime              @db.Timestamptz(3)
+  /// A migration CHECK constraint forbids a reporterId on anonymous reports.
+  isAnonymous     Boolean               @default(true)
+  reporterId      String?
+  status          ReportStatus          @default(SUBMITTED)
+  createdAt       DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @db.Timestamptz(3)
+  reporter        User?                 @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+  statusHistory   ReportStatusHistory[]
+  notifications   Notification[]
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([incidentType, createdAt])
+  @@index([reporterId])
+}
+
+model ReportStatusHistory {
+  id          String       @id @default(cuid())
+  reportId    String
+  status      ReportStatus
+  /// Internal staff note. Never include this in public status lookup responses.
+  note        String?      @db.Text
+  /// Null for anonymous submission/system events or a deleted actor.
+  changedById String?
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  report      Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  changedBy   User?        @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([reportId, createdAt])
+  @@index([changedById])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  recipientId String
+  reportId    String
+  type        NotificationType
+  title       String           @db.VarChar(160)
+  /// Generic alert text; avoid copying sensitive report descriptions.
+  message     String           @db.VarChar(500)
+  /// Null means unread; this is the single source of read/unread state.
+  readAt      DateTime?        @db.Timestamptz(3)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  recipient   User             @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  report      Report           @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt, createdAt])
+  @@index([reportId])
+}
