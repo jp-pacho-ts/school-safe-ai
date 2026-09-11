@@ -51,7 +51,7 @@ const steps = [
     number: "03",
     icon: Check,
     title: "Follow the next steps",
-    description: "Use your report reference number to check its status as it moves through review.",
+    description: "You will be able to use your report reference number to check its status as it moves through review.",
   },
 ];
 
@@ -71,7 +71,7 @@ export default function Home() {
             </p>
             <div className={styles.heroActions}>
               <Button asChild size="lg" className={styles.primaryButton}>
-                <a href="#report-support">Reporting & support <ArrowUpRight aria-hidden="true" /></a>
+                <a href="/report">Report a concern <ArrowUpRight aria-hidden="true" /></a>
               </Button>
               <a href="#how-it-works" className={styles.textLink}>
                 See how it will work <ArrowDown size={16} aria-hidden="true" />
@@ -79,7 +79,7 @@ export default function Home() {
             </div>
             <p className={styles.availability}>
               <span aria-hidden="true" className={styles.statusDot} />
-              Online reporting is coming soon.
+              Reporting demo available. Please use fictional details.
             </p>
           </div>
           <div className={styles.heroArt}>
@@ -167,7 +167,7 @@ export default function Home() {
                 if you can and contact a nearby trusted adult or local emergency services.
               </p>
               <p className={styles.urgentNote}>
-                This website does not provide emergency help and is not accepting reports yet.
+                This website does not provide emergency help. Speak with a trusted adult if you need support.
               </p>
             </aside>
           </div>
@@ -178,11 +178,11 @@ export default function Home() {
             <p className={styles.eyebrow}>LET’S TAKE THE FIRST STEP</p>
             <h2 id="report-heading">You have a voice.<br />It deserves to be heard.</h2>
             <p>
-              Online reporting is coming soon. For now, speak with a teacher,
+              Reporting demo available. Please use fictional details. For now, speak with a teacher,
               school counselor, or another trusted adult about your concern.
             </p>
             <Button asChild size="lg" className={styles.lightButton}>
-              <a href="#safety">Explore support options <ArrowUpRight aria-hidden="true" /></a>
+              <a href="/report">Start a report <ArrowUpRight aria-hidden="true" /></a>
             </Button>
           </div>
           <div className={styles.reportArt} aria-hidden="true">

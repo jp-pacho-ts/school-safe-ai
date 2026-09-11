@@ -1,7 +1,9 @@
 # School Safe AI — Basic Competition Version
 
-Phases 1–3 provide the project foundation, database, and responsive home page.
-Student reporting, teacher dashboards, notification delivery, and status tracking remain scheduled for later phases.
+Phases 1–4 provide the foundation, database, responsive home page, and student
+report submission with a review step and receipt. Use fictional information for
+this competition demo. Teacher review, status lookup, notifications, authentication,
+and the dedicated security review remain scheduled for later phases.
 [PLAN.md](PLAN.md) is the active progress tracker; [AGENTS.md](AGENTS.md) defines the scope.
 
 ## Stack
@@ -27,7 +29,7 @@ npm run db:check
 npm run dev
 ```
 
-Open http://localhost:3000. The home page explains the project and planned reporting flow, with safety guidance and a reporting/support section. Online reporting is coming soon; the site does not accept reports yet.
+Open http://localhost:3000. The home page links to `/report`, where students can review and save a fictional report. Successful submission opens `/report/success` with a reference number. This demo does not provide emergency help or teacher review.
 
 `db:start` finds PostgreSQL 18 under the standard Windows installation directory,
 then checks PATH. Set `PG_BIN` to your PostgreSQL bin directory for another installation.
@@ -56,13 +58,15 @@ DATABASE_URL="postgresql://USERNAME:PASSWORD@HOST:5432/DATABASE"
 ```
 
 URL-encode special characters in credentials. Ensure the named database already exists,
-then run `npm run db:check`. Skip `db:start` and `db:stop` for an external database.
+then run `npm run db:deploy`, `npm run db:generate`, and `npm run db:check`.
+Existing installations must apply the Phase 4 migration before accepting reports.
+Skip `db:start` and `db:stop` for an external database.
 Environment files are ignored; only `.env.example` is intended to be committed.
 Database values are server-only and must not use the `NEXT_PUBLIC_` prefix.
 
 Next.js, Prisma configuration, and the database check load environment files through
 `@next/env`, including Next.js's `.env.local` precedence. CLI/database checks default to development mode; set `NODE_ENV=production` explicitly to check a production setup.
-Client generation and the home page build do not require a running database.
+Client generation and the application build do not require a running database.
 Database access validates the environment with Zod before creating a client.
 
 ## Commands
@@ -84,8 +88,8 @@ Database access validates the environment with Zod before creating a client.
 | `npm run db:deploy` | Apply committed migrations |
 | `npm run db:status` | Check migration status |
 | `npm run db:seed` | Add missing fictional demo fixtures |
-| `npm run test:unit` | Run environment tests without a database |
-| `npm run test:db` | Run rollback-only database integrity tests |
+| `npm run test:unit` | Run environment and shared report-validation tests without a database |
+| `npm run test:db` | Run database integrity and report-submission tests with rollback-only fixtures |
 
 `npm ci` generates Prisma Client through `postinstall`. Apply migrations separately;
 Prisma 7 runs the seed only when explicitly invoked with `npm run db:seed`.
@@ -99,7 +103,7 @@ Connection checks do not expose a public diagnostic endpoint or print credential
 | Model | Purpose |
 | --- | --- |
 | `User` | Student, teacher, or admin identity with a unique email |
-| `Report` | Unique reference, incident type/date, description, location, anonymity, and current status |
+| `Report` | Reference, submission key, incident details, anonymity, optional report-local name, and status |
 | `ReportStatusHistory` | Ordered status records with an optional actor and internal staff note |
 | `Notification` | Recipient/report links, notification type, generic message, and optional `readAt` |
 
@@ -109,21 +113,25 @@ Notification types are `NEW_REPORT` and `STATUS_UPDATED`.
 Timestamps use PostgreSQL `TIMESTAMPTZ(3)`. Indexes support report filtering,
 ordered histories, recipient notification lists, and unread queries.
 
-Anonymous reports default to `isAnonymous: true` and must have `reporterId: null`.
-A database CHECK constraint enforces that rule. Another rejects blank report
-references, descriptions, and locations. These custom constraints live in the SQL
-migration: use migrations, not `prisma db push`, to reproduce the database.
+Anonymous reports default to `isAnonymous: true` and must have both `reporterId`
+and `reporterName` set to null. A database CHECK constraint enforces that rule.
+Another rejects blank report references, descriptions, and locations. These custom
+constraints live in SQL migrations: use migrations, not `prisma db push`, to reproduce them.
+
+The additive Phase 4 migration adds nullable `reporterName` and unique UUID
+`submissionKey` columns while preserving existing reports. Public submissions never
+link a user account; a supplied name is unverified and belongs only to that report.
 
 Deleting a user preserves their reports/history and clears the identity links;
 their notifications are removed. Deleting a report removes its history and
 notifications. A nonanonymous report may therefore have no reporter after user
 deletion. History notes are internal and must not be returned by future public
 status lookup. Future status updates should update the report and append history
-in the same transaction; that application workflow is not implemented in Phase 2.
+in the same transaction; staff status updates remain a later-phase workflow.
 
 ## Migrations and demo seed
 
-For a new development database, apply the committed migration and add fixtures:
+For a new development database, apply the committed migrations and add fixtures:
 
 ```bash
 npm run db:deploy
@@ -140,29 +148,32 @@ after schema changes. Do not edit migrations that have already been applied.
 The fictional seed contains 4 users, 5 reports (one per status), 13 history entries,
 and 7 notifications. Three reports are anonymous and two link to the demo student.
 Both read and unread notifications are included. Fixture IDs start with `demo-`,
-emails use `example.invalid`, and fixed references are only for demonstration;
-random, unguessable report reference generation belongs to Phase 4.
+emails use `example.invalid`, and fixed references are only for demonstration.
+New form submissions receive randomly generated references.
 
 Seeding runs in one transaction. Stable IDs and create-only upserts make reruns
 safe: missing fixtures are added without duplicating or overwriting existing
 records. It never clears tables. The seed refuses `NODE_ENV=production`; these
 records are demo data and do not provide authentication or login credentials.
 
-`npm test` runs both unit and database integration checks. Database tests require
-a running, migrated development database and roll back all their fixture changes.
-Use `npm run test:unit` when checking only environment validation without a database.
+`npm test` runs environment, report-validation, database integrity, and submission
+checks. The current suite has 46 passing tests. Database tests require a running,
+migrated development database and roll back their fixtures. Use `npm run test:unit`
+for environment and shared report validation without a database.
 
 ## Structure
 
 ```text
-app/                  App Router layout, metadata/icon, global styles, and home page
+app/                  App Router home, reporting/receipt pages, and reports API
 components/home/      Landing-page styles, mobile navigation, and school illustration
+components/reports/   Interactive report form and receipt reference-copy control
 components/ui/        Reusable shadcn/ui components
 lib/                  Shared utilities and server-only environment/Prisma access
-prisma/               Domain schema, versioned SQL migration, and fictional demo seed
+lib/reports/          Shared input validation and server-only submission/receipt service
+prisma/               Domain schema, versioned SQL migrations, and fictional demo seed
 generated/prisma/     Generated client; ignored and recreated during installation
 scripts/              Database lifecycle and connection validation
-tests/                Foundation validation tests
+tests/                Environment, report validation, database, and submission tests
 public/               Static assets from the initial scaffold
 prisma.config.ts       Prisma CLI and environment configuration
 components.json       shadcn/ui configuration
@@ -177,19 +188,55 @@ Add UI primitives as needed with `npx shadcn@latest add <component>`.
 
 ## Home page
 
-The landing page includes the project purpose, a preview of the reporting workflow,
-safety guidance, a reporting/support CTA, and footer links. CTAs navigate to real
-homepage sections; feature routes and report submission are not implemented yet.
+The landing page includes the project purpose, reporting workflow, safety guidance,
+a report CTA, and footer links. Reporting CTAs now open `/report`; the page clearly
+identifies the competition demo and the teacher/status features still to come.
 
 The page uses server-rendered content, a small client navigation disclosure, scoped
 responsive styles, local SVG art, and system fonts. It includes a skip link, visible
 focus indicators, accessible navigation labels, and Escape-to-close menu behavior.
 The narrow-screen CTA can wrap to accommodate small screens and enlarged text.
 
-Lint, TypeScript, all 21 existing tests, production build, and HTTP/asset checks pass.
-Text contrast and responsive/accessibility source review are complete. Browser
-rendering and actual keyboard/mobile interaction still need verification because no
-browser was available in the development session; see PLAN.md for the follow-up checks.
+The Phase 3 text-contrast and responsive/accessibility source reviews are recorded
+in PLAN.md. Browser rendering and actual keyboard/mobile interaction still need
+verification because no browser was available in the development session.
+
+## Student reporting
+
+`/report` provides incident type, description (10–5,000 trimmed characters), location
+(1–200), incident date, and an anonymous option selected by default. Turning anonymity
+off requires a self-provided name of at most 100 characters; this does not create or
+identify an account. The form offers a review/edit step before the final submission.
+
+The shared Zod schema runs in the form and again on the server. It rejects unknown
+fields, malformed values, impossible dates, and NUL characters that PostgreSQL cannot
+store. Anonymous names are removed from validated output. Incident dates remain
+`YYYY-MM-DD` calendar dates and are stored at UTC midnight. Dates must be on or after
+1900-01-01 and no later than the current UTC date plus one day, allowing for students
+ahead of UTC.
+
+`POST /api/reports` accepts same-origin JSON with a 32 KiB (32,768-byte) body limit.
+The service generates an `SSA-` reference with 112 random bits and saves the report
+in `SUBMITTED` status together with its initial history entry in one atomic nested
+write. Callers cannot supply account IDs, references, status, or history. Validation
+and database failures return readable messages without exposing report content or
+internal errors.
+
+Each form receives a random UUID submission key. Retrying the same key and normalized
+details returns the existing reference without creating another report or history
+entry. Reusing that key with different details returns a conflict and preserves the
+original report. After an uncertain response, keep the page open and retry the same
+details; reloading starts a new form.
+
+A successful response sets a one-hour `HttpOnly`, `SameSite=Strict` receipt cookie,
+scoped to `/report/success` and marked `Secure` in production. It contains the
+submission key, not report content. The receipt page reads only the reference number
+and offers a copy control; refreshing it does not resubmit the report. An expired or
+missing cookie cannot display a receipt. Save the reference privately.
+
+Reports are stored, but teacher review, public status lookup, notification delivery,
+and authentication are not implemented. Their workflows and the dedicated security
+review remain later phases. Use fictional demo data; this is not an emergency service.
 
 ## Dependency maintenance
 
@@ -211,6 +258,10 @@ npm run db:validate
 npm run db:check
 npm run build
 ```
+
+Phase 4 validation passed: lint, TypeScript, all 46 tests, Prisma validation/migration,
+production build, and HTTP submission/retry/receipt/error checks. Browser interaction
+and responsive rendering remain pending because no browser was available.
 
 The relation-loading integration test currently emits a non-failing pg 8 warning
 because Prisma issues included relation reads concurrently on a transaction client.

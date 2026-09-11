@@ -6,7 +6,7 @@ export const metadata: Metadata = {
     default: "School Safe AI",
     template: "%s | School Safe AI",
   },
-  description: "A school safety project helping students speak up and connect with support. Explore our purpose and the reporting experience coming soon.",
+  description: "Explore School Safe AI, share fictional concerns in our reporting demo, and find guidance for speaking with a trusted adult.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

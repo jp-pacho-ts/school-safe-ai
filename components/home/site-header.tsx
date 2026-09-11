@@ -37,7 +37,7 @@ export function SiteHeader() {
           ))}
         </nav>
         <Button asChild className={styles.headerCta}>
-          <a href="#report-support">Reporting & support <ArrowUpRight aria-hidden="true" /></a>
+          <a href="/report">Report a concern <ArrowUpRight aria-hidden="true" /></a>
         </Button>
         <button
           ref={menuButton}
@@ -62,8 +62,8 @@ export function SiteHeader() {
             {item.label}
           </a>
         ))}
-        <a href="#report-support" onClick={() => setIsOpen(false)}>
-          Reporting & support <ArrowUpRight size={16} aria-hidden="true" />
+        <a href="/report" onClick={() => setIsOpen(false)}>
+          Report a concern <ArrowUpRight size={16} aria-hidden="true" />
         </a>
       </nav>
     </header>

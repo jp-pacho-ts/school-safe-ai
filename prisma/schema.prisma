@@ -53,14 +53,18 @@ model User {
 
 model Report {
   id              String                @id @default(cuid())
-  /// Unique lookup reference; random reference generation belongs to Phase 4.
+  /// Random public reference generated only by the reporting service.
   referenceNumber String                @unique @db.VarChar(32)
   incidentType    IncidentType
   description     String                @db.Text
   location        String                @db.VarChar(200)
   incidentDate    DateTime              @db.Timestamptz(3)
-  /// A migration CHECK constraint forbids a reporterId on anonymous reports.
+  /// A migration CHECK constraint forbids a reporterId or name on anonymous reports.
   isAnonymous     Boolean               @default(true)
+  /// Unverified name provided for this report; never used to link an account.
+  reporterName    String?               @db.VarChar(100)
+  /// High-entropy per-form key makes retries safe; null on older/demo records.
+  submissionKey   String?               @unique @db.Uuid
   reporterId      String?
   status          ReportStatus          @default(SUBMITTED)
   createdAt       DateTime              @default(now()) @db.Timestamptz(3)
