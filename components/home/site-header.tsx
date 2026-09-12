@@ -10,6 +10,7 @@ const navigation = [
   { href: "#about", label: "Our purpose" },
   { href: "#how-it-works", label: "How it works" },
   { href: "#safety", label: "Safety & support" },
+  { href: "/status", label: "Check status" },
 ];
 
 export function SiteHeader() {

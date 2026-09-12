@@ -55,7 +55,7 @@ export default async function ReportSuccessPage() {
         <CopyReference referenceNumber={receipt.referenceNumber} />
       </div>
       <p>
-        Teacher review and online status checking are not available in this demo yet.
+        You can check this report&apos;s saved status using the reference above. Teacher review tools are not available in this demo yet.
         If you need support, speak with a teacher, school counselor, or another trusted adult.
       </p>
       <p className={styles.receiptNote}>
@@ -63,7 +63,8 @@ export default async function ReportSuccessPage() {
         submit another report. This website does not provide emergency help.
       </p>
       <div className={styles.actions}>
-        <Button asChild className={styles.action}><Link href="/">Back to home</Link></Button>
+        <Button asChild className={styles.action}><Link href="/status">Check report status</Link></Button>
+        <Link href="/" className={styles.backLink}>Back to home</Link>
         <a href="/report" className={styles.backLink}>Start another report</a>
       </div>
     </section>

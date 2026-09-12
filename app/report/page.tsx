@@ -22,7 +22,7 @@ export default async function ReportPage() {
       </div>
       <div className={styles.demoNote}>
         <HeartHandshake size={22} aria-hidden="true" />
-        <p><strong>Competition demo — use fictional information.</strong> Reports can be saved, but teacher review and online status checking are not available yet.</p>
+        <p><strong>Competition demo — use fictional information.</strong> Reports can be saved and their status can be checked. Teacher review tools are not available yet.</p>
       </div>
       <aside className={styles.safetyNote} aria-label="Immediate help">
         <TriangleAlert size={21} aria-hidden="true" />

@@ -1,5 +1,4 @@
 import {
-  ArrowDown,
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -51,7 +50,7 @@ const steps = [
     number: "03",
     icon: Check,
     title: "Follow the next steps",
-    description: "You will be able to use your report reference number to check its status as it moves through review.",
+    description: "Use your private report reference number to check its saved status and history.",
   },
 ];
 
@@ -73,13 +72,13 @@ export default function Home() {
               <Button asChild size="lg" className={styles.primaryButton}>
                 <a href="/report">Report a concern <ArrowUpRight aria-hidden="true" /></a>
               </Button>
-              <a href="#how-it-works" className={styles.textLink}>
-                See how it will work <ArrowDown size={16} aria-hidden="true" />
+              <a href="/status" className={styles.textLink}>
+                Check report status <ArrowRight size={16} aria-hidden="true" />
               </a>
             </div>
             <p className={styles.availability}>
               <span aria-hidden="true" className={styles.statusDot} />
-              Reporting demo available. Please use fictional details.
+              Reporting and status demos available. Please use fictional details.
             </p>
           </div>
           <div className={styles.heroArt}>
@@ -206,6 +205,7 @@ export default function Home() {
             <a href="#about">Our purpose</a>
             <a href="#how-it-works">How it works</a>
             <a href="#safety">Safety & support</a>
+            <a href="/status">Check status</a>
           </nav>
         </div>
         <div className={styles.footerBottom}>
