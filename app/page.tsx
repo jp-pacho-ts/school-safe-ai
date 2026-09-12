@@ -44,7 +44,7 @@ const steps = [
     number: "02",
     icon: UsersRound,
     title: "Let a teacher review it",
-    description: "A teacher will be able to review your report and record the steps taken to help.",
+    description: "A teacher can review your report and record the steps taken to help.",
   },
   {
     number: "03",
@@ -124,8 +124,8 @@ export default function Home() {
             <div className={styles.howHeading}>
               <p className={styles.eyebrow}>A CLEAR PATH FORWARD</p>
               <h2 id="how-heading">Small steps. Meaningful support.</h2>
-              <p>The reporting experience we’re building, from sharing a concern to following its progress.</p>
-              <span className={styles.previewLabel}>Coming soon</span>
+              <p>The reporting experience, from sharing a concern to following its progress.</p>
+              <span className={styles.previewLabel}>Demo available</span>
             </div>
             <ol className={styles.steps}>
               {steps.map(({ number, icon: Icon, title, description }) => (
@@ -206,6 +206,7 @@ export default function Home() {
             <a href="#how-it-works">How it works</a>
             <a href="#safety">Safety & support</a>
             <a href="/status">Check status</a>
+            <a href="/login">Staff portal</a>
           </nav>
         </div>
         <div className={styles.footerBottom}>

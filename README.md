@@ -1,9 +1,10 @@
 # School Safe AI — Basic Competition Version
 
-Phases 1–5 provide the foundation, database, responsive home page, student report
-submission with a review step and receipt, and private reference-based status lookup.
-Use fictional information for this competition demo. Teacher review, notifications,
-authentication, and the dedicated security review remain scheduled for later phases.
+Phases 1–6 provide the foundation, database, responsive home page, student report
+submission, private reference-based status lookup, and a protected teacher dashboard
+for reviewing and updating reports. Use fictional information for this competition
+demo. Notifications and the dedicated responsive/security reviews remain scheduled
+for later phases.
 [PLAN.md](PLAN.md) is the active progress tracker; [AGENTS.md](AGENTS.md) defines the scope.
 
 ## Stack
@@ -29,11 +30,11 @@ npm run db:check
 npm run dev
 ```
 
-Open http://localhost:3000. The home page links to `/report`, where students can
-review and save a fictional report, and `/status`, where a saved reference reveals
-only its current status and status history. Successful submission opens
-`/report/success` with a reference number. This demo does not provide emergency
-help or teacher review.
+Open http://localhost:3000. Students can submit at `/report` and use the private
+reference at `/status`. Staff can open `/login`, then review the dashboard at
+`/dashboard`. With the default local setup, the sign-in page shows the fictional
+teacher email and development-only access code. This demo does not provide
+emergency help.
 
 `db:start` finds PostgreSQL 18 under the standard Windows installation directory,
 then checks PATH. Set `PG_BIN` to your PostgreSQL bin directory for another installation.
@@ -55,10 +56,12 @@ automatically after a computer reboot.
 
 ## Use an existing PostgreSQL database
 
-Copy `.env.example` to `.env` and replace `DATABASE_URL` with your database URL:
+Copy `.env.example` to `.env` and replace all placeholder values:
 
 ```dotenv
 DATABASE_URL="postgresql://USERNAME:PASSWORD@HOST:5432/DATABASE"
+STAFF_ACCESS_CODE="a-long-random-code-known-to-demo-staff"
+AUTH_SESSION_SECRET="a-different-random-secret-of-at-least-32-characters"
 ```
 
 URL-encode special characters in credentials. Ensure the named database already exists,
@@ -66,7 +69,11 @@ then run `npm run db:deploy`, `npm run db:generate`, and `npm run db:check`.
 Existing installations must apply the Phase 4 migration before accepting reports.
 Skip `db:start` and `db:stop` for an external database.
 Environment files are ignored; only `.env.example` is intended to be committed.
-Database values are server-only and must not use the `NEXT_PUBLIC_` prefix.
+All three values are server-only and must not use the `NEXT_PUBLIC_` prefix.
+Production requires distinct `STAFF_ACCESS_CODE` and `AUTH_SESSION_SECRET` values;
+the checked-in placeholders are rejected. Development may omit both auth values to
+use an in-memory signing secret and the fixed local credentials shown on `/login`.
+Restarting that development server invalidates its existing staff sessions.
 
 Next.js, Prisma configuration, and the database check load environment files through
 `@next/env`, including Next.js's `.env.local` precedence. CLI/database checks default to development mode; set `NODE_ENV=production` explicitly to check a production setup.
@@ -92,8 +99,8 @@ Database access validates the environment with Zod before creating a client.
 | `npm run db:deploy` | Apply committed migrations |
 | `npm run db:status` | Check migration status |
 | `npm run db:seed` | Add missing fictional demo fixtures |
-| `npm run test:unit` | Run environment, report-input, and status-input validation tests without a database |
-| `npm run test:db` | Run database, submission, status-service, and status-route tests with isolated fixtures |
+| `npm run test:unit` | Run environment, report/status/dashboard validation, and auth/session tests without a database |
+| `npm run test:db` | Run database, submission, status, dashboard, and auth-route tests with isolated fixtures |
 
 `npm ci` generates Prisma Client through `postinstall`. Apply migrations separately;
 Prisma 7 runs the seed only when explicitly invoked with `npm run db:seed`.
@@ -157,22 +164,27 @@ New form submissions receive randomly generated references.
 
 Seeding runs in one transaction. Stable IDs and create-only upserts make reruns
 safe: missing fixtures are added without duplicating or overwriting existing
-records. It never clears tables. The seed refuses `NODE_ENV=production`; these
-records are demo data and do not provide authentication or login credentials.
+records. It never clears tables. The seed refuses `NODE_ENV=production`. In the
+unconfigured local-development fallback only, the fictional teacher record shown
+on `/login` can enter the dashboard with the separate shared demo access code.
 
-`npm test` runs environment, report-validation, database integrity, submission,
-status lookup, and HTTP route checks. The current suite has 61 passing tests.
+`npm test` runs environment and input validation, database integrity, submission,
+status lookup, staff authentication, dashboard reads, concurrent status updates,
+and HTTP route checks. The current suite has 95 passing tests.
 Database tests require a running, migrated development database and use rollback-only
 or exact random fixtures. Use `npm run test:unit` for validation without a database.
 
 ## Structure
 
 ```text
-app/                  App Router home, reporting/receipt, status pages, and reports APIs
+app/                  App Router public flows, auth APIs, login, and protected dashboard routes
+components/dashboard/ Dashboard shell, metrics, report queue/detail, and update form
 components/home/      Landing-page styles, mobile navigation, and school illustration
 components/reports/   Interactive report form, receipt control, and status timeline
 components/ui/        Reusable shadcn/ui components
 lib/                  Shared utilities and server-only environment/Prisma access
+lib/auth/             Signed staff-session configuration, validation, and authorization
+lib/dashboard/        Dashboard validation, private DTOs, filters, and atomic status updates
 lib/reports/          Shared validation plus server-only submission and status services
 prisma/               Domain schema, versioned SQL migrations, and fictional demo seed
 generated/prisma/     Generated client; ignored and recreated during installation
@@ -193,9 +205,9 @@ Add UI primitives as needed with `npx shadcn@latest add <component>`.
 ## Home page
 
 The landing page includes the project purpose, reporting workflow, safety guidance,
-a report CTA, and footer links. Reporting CTAs open `/report`, while header, hero,
-and footer links make `/status` discoverable. The page clearly identifies the
-competition demo and the teacher workflow still to come.
+a report CTA, and footer links. Reporting CTAs open `/report`; status and staff
+portal links make `/status` and `/login` discoverable. The page clearly identifies
+the available competition demo.
 
 The page uses server-rendered content, a small client navigation disclosure, scoped
 responsive styles, local SVG art, and system fonts. It includes a skip link, visible
@@ -239,10 +251,10 @@ submission key, not report content. The receipt page reads only the reference nu
 and offers a copy control; refreshing it does not resubmit the report. An expired or
 missing cookie cannot display a receipt. Save the reference privately.
 
-Reports are stored and their public-safe status can be checked, but teacher review,
-notification delivery, and authentication are not implemented. Those workflows and
-the dedicated security review remain later phases. Use fictional demo data; this is
-not an emergency service.
+Reports are stored, their public-safe status can be checked, and authorized demo
+staff can review them in the dashboard. Notification delivery and the dedicated
+security review remain later phases. Use fictional demo data; this is not an
+emergency service.
 
 ## Report status
 
@@ -264,8 +276,40 @@ database failures are masked.
 
 The reference acts like a private receipt: anyone who has it can view this limited
 status information. Fixed `DEMO-*` references are intentionally guessable and contain
-fictional data only. New reports remain `SUBMITTED` until the Phase 6 teacher workflow
-can update the report and append a history entry atomically.
+fictional data only. Authorized staff status changes update `Report.status` and append
+an internal history entry in one transaction; the public tracker reflects the new
+status but never exposes the internal note or actor.
+
+## Staff authentication
+
+`/login` accepts a normalized staff email plus a shared competition-demo access code.
+The server resolves only current `TEACHER` and `ADMIN` rows. Successful sign-in issues
+an eight-hour HMAC-signed cookie containing only the user ID and timestamps. The cookie
+is `HttpOnly`, `SameSite=Strict`, `Secure` in production, and rechecked against the
+database on each protected request, so deleting or demoting a user revokes access.
+
+Login and logout are same-origin, bounded JSON-only POST routes with generic failures,
+private response headers, and no credential logging. The local fallback is convenient
+for a fictional competition demo, not a production identity system: it has no
+per-user passwords, external identity provider, rate limiter, recovery, or audit-log
+retention. Replace it with the school’s supported identity provider before real use.
+
+## Teacher dashboard
+
+`/dashboard` shows total, submitted, under-review, action-taken, resolved, and
+dismissed metrics plus the five newest reports. `/dashboard/reports` provides bounded
+pagination and filters for reference, status, incident type, and incident date.
+Report details show the concern, privacy-aware reporter information, internal notes,
+actors, and chronological status history. Anonymous records suppress reporter identity
+even if inconsistent imported data were ever returned by the database.
+
+Every dashboard page authorizes independently before reading data; the layout guard is
+only an additional boundary. Server-side selects omit submission keys and unnecessary
+content. Status changes reauthenticate inside the Server Action, permit only the
+documented forward transitions, accept an optional trimmed 2,000-character note, and
+use an optimistic status guard inside the same transaction as history creation.
+Simultaneous reviewers therefore produce one update and one safe conflict response.
+Notification creation remains Phase 7 and is intentionally not coupled to this flow.
 
 ## Dependency maintenance
 
@@ -288,10 +332,12 @@ npm run db:check
 npm run build
 ```
 
-Phase 5 validation passed: lint, TypeScript, all 61 tests, Prisma validation and
-connection checks, production build, and live HTTP status/success/not-found/origin
-checks. Browser interaction and responsive rendering for Phases 4–5 remain pending
-because no browser was available.
+Phase 6 validation passed: lint, TypeScript, all 95 tests, Prisma validation/migration
+status/connection checks, production build, and live HTTP checks for authorization,
+login, metrics, filters, details, atomic status history, public tracker synchronization,
+and logout. Temporary live-verification data was deleted after the check. Browser
+interaction and responsive rendering for Phases 4–6 remain pending because Computer
+Use returned no available browsers.
 
 The relation-loading integration test currently emits a non-failing pg 8 warning
 because Prisma issues included relation reads concurrently on a transaction client.

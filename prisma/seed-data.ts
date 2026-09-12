@@ -6,7 +6,8 @@ import {
   type Prisma,
 } from "../generated/prisma/client";
 
-// These records are fictional fixtures, not accounts for signing in.
+// These are fictional identities. In development, the staff records can enter
+// the protected competition-demo dashboard with its separate shared access code.
 export const demoUsers = [
   {
     id: "demo-user-teacher-1",

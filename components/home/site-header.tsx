@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import styles from "./home.module.css";
 
 const navigation = [
-  { href: "#about", label: "Our purpose" },
   { href: "#how-it-works", label: "How it works" },
   { href: "#safety", label: "Safety & support" },
   { href: "/status", label: "Check status" },
+  { href: "/login", label: "Staff portal" },
 ];
 
 export function SiteHeader() {
