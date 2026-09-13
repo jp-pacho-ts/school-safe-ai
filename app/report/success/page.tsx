@@ -55,7 +55,7 @@ export default async function ReportSuccessPage() {
         <CopyReference referenceNumber={receipt.referenceNumber} />
       </div>
       <p>
-        You can check this report&apos;s saved status using the reference above. Teacher review tools are not available in this demo yet.
+        You can check this report&apos;s saved status using the reference above. Authorized staff can review it in the protected dashboard.
         If you need support, speak with a teacher, school counselor, or another trusted adult.
       </p>
       <p className={styles.receiptNote}>

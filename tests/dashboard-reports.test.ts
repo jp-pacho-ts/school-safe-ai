@@ -400,18 +400,29 @@ function writeStore(transaction: Prisma.TransactionClient): DashboardWriteStore 
   return store as unknown as DashboardWriteStore;
 }
 
-test("status update uses a trusted actor and guarded update before creating history", async () => {
+test("status update uses a trusted actor and atomically creates reporter history and notification", async () => {
   const calls: string[] = [];
   const actorId = "trusted-teacher-id";
+  const reporterId = "linked-student-id";
   const tx = {
     report: {
       findUnique: async (args: Record<string, unknown>) => {
         calls.push("find");
         assert.deepEqual(args, {
           where: { id: "report-1" },
-          select: { id: true, status: true },
+          select: {
+            id: true,
+            status: true,
+            isAnonymous: true,
+            reporterId: true,
+          },
         });
-        return { id: "report-1", status: "SUBMITTED" };
+        return {
+          id: "report-1",
+          status: "SUBMITTED",
+          isAnonymous: false,
+          reporterId,
+        };
       },
       updateMany: async (args: Record<string, unknown>) => {
         calls.push("guarded-update");
@@ -445,6 +456,23 @@ test("status update uses a trusted actor and guarded update before creating hist
         };
       },
     },
+    notification: {
+      create: async (args: Record<string, unknown>) => {
+        calls.push("notification");
+        assert.deepEqual(args, {
+          data: {
+            recipientId: reporterId,
+            reportId: "report-1",
+            type: "STATUS_UPDATED",
+            title: "Report status updated",
+            message: "The status of a report you submitted has been updated.",
+          },
+          select: { id: true },
+        });
+        assert.doesNotMatch(JSON.stringify(args), /review started/i);
+        return { id: "notification-1" };
+      },
+    },
   } as unknown as Prisma.TransactionClient;
 
   const result = await service().updateDashboardReportStatus(
@@ -458,7 +486,7 @@ test("status update uses a trusted actor and guarded update before creating hist
     writeStore(tx),
   );
   assert.ok(result.ok);
-  assert.deepEqual(calls, ["find", "guarded-update", "history"]);
+  assert.deepEqual(calls, ["find", "guarded-update", "history", "notification"]);
   assert.deepEqual(result.change, {
     reportId: "report-1",
     status: "UNDER_REVIEW",
@@ -608,10 +636,11 @@ test("status update returns generic missing and transaction failure results", as
   assert.doesNotMatch(JSON.stringify(failed), /postgresql|password|database/i);
 });
 
-async function createDashboardFixture() {
+async function createDashboardFixture(linkedReporter = false) {
   const db = database();
   const actorId = randomUUID();
   const reportId = randomUUID();
+  const reporterId = linkedReporter ? randomUUID() : null;
   await db.user.create({
     data: {
       id: actorId,
@@ -620,6 +649,16 @@ async function createDashboardFixture() {
       role: "TEACHER",
     },
   });
+  if (reporterId) {
+    await db.user.create({
+      data: {
+        id: reporterId,
+        email: `dashboard-student-${randomUUID()}@example.invalid`,
+        name: "Fictional Dashboard Student",
+        role: "STUDENT",
+      },
+    });
+  }
   await db.report.create({
     data: {
       id: reportId,
@@ -628,21 +667,26 @@ async function createDashboardFixture() {
       description: "Fictional dashboard integration test report.",
       location: "Fictional dashboard integration location",
       incidentDate: new Date("2026-09-01T00:00:00.000Z"),
-      isAnonymous: true,
+      isAnonymous: !reporterId,
+      reporterId,
       status: "SUBMITTED",
       statusHistory: { create: { status: "SUBMITTED" } },
     },
   });
-  return { actorId, reportId };
+  return { actorId, reportId, reporterId };
 }
 
 async function removeDashboardFixture(fixture: {
   actorId: string;
   reportId: string;
+  reporterId: string | null;
 }) {
   const db = database();
   await db.report.deleteMany({ where: { id: fixture.reportId } });
   await db.user.deleteMany({ where: { id: fixture.actorId } });
+  if (fixture.reporterId) {
+    await db.user.deleteMany({ where: { id: fixture.reporterId } });
+  }
 }
 
 test("persisted status update is atomic and rejects a repeated stale update", async () => {
@@ -725,8 +769,92 @@ test("history failure rolls the guarded report update back", async () => {
   }
 });
 
+test("a reporter notification failure rolls back the status and history", async () => {
+  const fixture = await createDashboardFixture(true);
+  assert.ok(fixture.reporterId);
+  const db = database();
+  const failingNotificationStore = {
+    $transaction: async (
+      callback: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    ) => db.$transaction((tx) => callback({
+      report: tx.report,
+      reportStatusHistory: tx.reportStatusHistory,
+      notification: {
+        create: async () => {
+          throw new Error("Fictional private notification write failure.");
+        },
+      },
+    } as unknown as Prisma.TransactionClient)),
+  } as unknown as DashboardWriteStore;
+
+  try {
+    const failed = await service().updateDashboardReportStatus(
+      {
+        reportId: fixture.reportId,
+        currentStatus: "SUBMITTED",
+        status: "UNDER_REVIEW",
+        note: "Fictional sensitive internal note.",
+      },
+      fixture.actorId,
+      failingNotificationStore,
+    );
+    assert.equal(failed.ok, false);
+    assert.ok(!failed.ok);
+    assert.equal(failed.reason, "unavailable");
+
+    const saved = await db.report.findUniqueOrThrow({
+      where: { id: fixture.reportId },
+      select: {
+        status: true,
+        _count: { select: { statusHistory: true, notifications: true } },
+      },
+    });
+    assert.equal(saved.status, "SUBMITTED");
+    assert.deepEqual(saved._count, { statusHistory: 1, notifications: 0 });
+  } finally {
+    await removeDashboardFixture(fixture);
+  }
+});
+
+test("persisted status notifications go only to a linked non-anonymous reporter", async () => {
+  const fixture = await createDashboardFixture(true);
+  assert.ok(fixture.reporterId);
+  try {
+    const note = "Fictional private internal follow-up details.";
+    const updated = await service().updateDashboardReportStatus(
+      {
+        reportId: fixture.reportId,
+        currentStatus: "SUBMITTED",
+        status: "UNDER_REVIEW",
+        note,
+      },
+      fixture.actorId,
+      database(),
+    );
+    assert.ok(updated.ok);
+
+    const notification = await database().notification.findFirstOrThrow({
+      where: { reportId: fixture.reportId },
+    });
+    assert.equal(notification.recipientId, fixture.reporterId);
+    assert.equal(notification.type, "STATUS_UPDATED");
+    assert.equal(notification.title, "Report status updated");
+    assert.equal(
+      notification.message,
+      "The status of a report you submitted has been updated.",
+    );
+    assert.equal(notification.readAt, null);
+    assert.doesNotMatch(
+      `${notification.title} ${notification.message}`,
+      /private internal|dashboard integration test report/i,
+    );
+  } finally {
+    await removeDashboardFixture(fixture);
+  }
+});
+
 test("simultaneous reviewers produce one status event and one conflict", async () => {
-  const fixture = await createDashboardFixture();
+  const fixture = await createDashboardFixture(true);
   try {
     const input = {
       reportId: fixture.reportId,
@@ -748,6 +876,12 @@ test("simultaneous reviewers produce one status event and one conflict", async (
         where: { reportId: fixture.reportId },
       }),
       2,
+    );
+    assert.equal(
+      await database().notification.count({
+        where: { reportId: fixture.reportId, type: "STATUS_UPDATED" },
+      }),
+      1,
     );
   } finally {
     await removeDashboardFixture(fixture);

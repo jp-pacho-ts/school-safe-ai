@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 import type { PrismaClient } from "@/generated/prisma/client";
+import { NEW_REPORT_NOTIFICATION } from "@/lib/notifications/notifications";
 import {
   getReportFieldErrors,
   reportInputSchema,
@@ -11,7 +12,8 @@ import {
   type ValidatedReportInput,
 } from "./validation";
 
-type ReportStore = Pick<PrismaClient, "report">;
+type ReportWriteStore = Pick<PrismaClient, "report" | "user">;
+type ReportReadStore = Pick<PrismaClient, "report">;
 
 export type SubmitReportResult =
   | { ok: true; referenceNumber: string; submissionKey: string; replayed: boolean }
@@ -55,7 +57,7 @@ function savedDetailsMatch(
 
 export async function submitReport(
   raw: unknown,
-  db: ReportStore,
+  db: ReportWriteStore,
 ): Promise<SubmitReportResult> {
   const parsed = reportInputSchema.safeParse(raw);
   if (!parsed.success) {
@@ -101,6 +103,10 @@ export async function submitReport(
       }
 
       try {
+        const staffRecipients = await db.user.findMany({
+          where: { role: { in: ["TEACHER", "ADMIN"] } },
+          select: { id: true },
+        });
         const report = await db.report.create({
           data: {
             referenceNumber: generateReportReference(),
@@ -114,8 +120,21 @@ export async function submitReport(
             reporterName: input.reporterName ?? null,
             reporterId: null,
             status: "SUBMITTED",
-            // A nested write commits both rows or neither.
+            // Nested writes commit the report, its initial history, and every
+            // staff notification together or roll all of them back.
             statusHistory: { create: { status: "SUBMITTED", changedById: null } },
+            ...(staffRecipients.length > 0
+              ? {
+                  notifications: {
+                    createMany: {
+                      data: staffRecipients.map(({ id: recipientId }) => ({
+                        recipientId,
+                        ...NEW_REPORT_NOTIFICATION,
+                      })),
+                    },
+                  },
+                }
+              : {}),
           },
           select: { referenceNumber: true },
         });
@@ -139,7 +158,7 @@ export async function submitReport(
   return { ok: false, reason: "unavailable", message: retryMessage };
 }
 
-export async function getReportReceipt(key: unknown, db: ReportStore) {
+export async function getReportReceipt(key: unknown, db: ReportReadStore) {
   const parsed = z.uuid().safeParse(key);
   if (!parsed.success) return null;
   // Receipt possession grants only this reference, never report content/history.

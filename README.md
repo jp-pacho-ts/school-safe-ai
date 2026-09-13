@@ -1,9 +1,9 @@
 # School Safe AI — Basic Competition Version
 
-Phases 1–6 provide the foundation, database, responsive home page, student report
-submission, private reference-based status lookup, and a protected teacher dashboard
-for reviewing and updating reports. Use fictional information for this competition
-demo. Notifications and the dedicated responsive/security reviews remain scheduled
+Phases 1–7 provide the foundation, database, responsive home page, student report
+submission, private reference-based status lookup, a protected teacher dashboard,
+and basic database-backed notifications. Use fictional information for this
+competition demo. The dedicated responsive and security reviews remain scheduled
 for later phases.
 [PLAN.md](PLAN.md) is the active progress tracker; [AGENTS.md](AGENTS.md) defines the scope.
 
@@ -100,7 +100,7 @@ Database access validates the environment with Zod before creating a client.
 | `npm run db:status` | Check migration status |
 | `npm run db:seed` | Add missing fictional demo fixtures |
 | `npm run test:unit` | Run environment, report/status/dashboard validation, and auth/session tests without a database |
-| `npm run test:db` | Run database, submission, status, dashboard, and auth-route tests with isolated fixtures |
+| `npm run test:db` | Run database, submission, status, dashboard, notification, and auth-route tests with isolated fixtures |
 
 `npm ci` generates Prisma Client through `postinstall`. Apply migrations separately;
 Prisma 7 runs the seed only when explicitly invoked with `npm run db:seed`.
@@ -122,7 +122,8 @@ The schema is in [prisma/schema.prisma](prisma/schema.prisma). Report status val
 are `SUBMITTED`, `UNDER_REVIEW`, `ACTION_TAKEN`, `RESOLVED`, and `DISMISSED`.
 Notification types are `NEW_REPORT` and `STATUS_UPDATED`.
 Timestamps use PostgreSQL `TIMESTAMPTZ(3)`. Indexes support report filtering,
-ordered histories, recipient notification lists, and unread queries.
+ordered histories, recipient notification lists, and unread queries. A null
+notification `readAt` value is the single source of unread state.
 
 Anonymous reports default to `isAnonymous: true` and must have both `reporterId`
 and `reporterName` set to null. A database CHECK constraint enforces that rule.
@@ -137,8 +138,8 @@ Deleting a user preserves their reports/history and clears the identity links;
 their notifications are removed. Deleting a report removes its history and
 notifications. A nonanonymous report may therefore have no reporter after user
 deletion. History notes are internal and are never returned by public status
-lookup. Future status updates should update the report and append history
-in the same transaction; staff status updates remain a later-phase workflow.
+lookup. Staff status updates change the report, append history, and create an
+eligible reporter notification in one transaction.
 
 ## Migrations and demo seed
 
@@ -170,7 +171,8 @@ on `/login` can enter the dashboard with the separate shared demo access code.
 
 `npm test` runs environment and input validation, database integrity, submission,
 status lookup, staff authentication, dashboard reads, concurrent status updates,
-and HTTP route checks. The current suite has 95 passing tests.
+notification ownership/read state, and HTTP route checks. The current suite has
+102 passing tests.
 Database tests require a running, migrated development database and use rollback-only
 or exact random fixtures. Use `npm run test:unit` for validation without a database.
 
@@ -178,13 +180,14 @@ or exact random fixtures. Use `npm run test:unit` for validation without a datab
 
 ```text
 app/                  App Router public flows, auth APIs, login, and protected dashboard routes
-components/dashboard/ Dashboard shell, metrics, report queue/detail, and update form
+components/dashboard/ Dashboard shell, reports, status updates, and notification inbox
 components/home/      Landing-page styles, mobile navigation, and school illustration
 components/reports/   Interactive report form, receipt control, and status timeline
 components/ui/        Reusable shadcn/ui components
 lib/                  Shared utilities and server-only environment/Prisma access
 lib/auth/             Signed staff-session configuration, validation, and authorization
 lib/dashboard/        Dashboard validation, private DTOs, filters, and atomic status updates
+lib/notifications/    Alert templates, private notification DTOs, and owned read-state updates
 lib/reports/          Shared validation plus server-only submission and status services
 prisma/               Domain schema, versioned SQL migrations, and fictional demo seed
 generated/prisma/     Generated client; ignored and recreated during installation
@@ -252,9 +255,10 @@ and offers a copy control; refreshing it does not resubmit the report. An expire
 missing cookie cannot display a receipt. Save the reference privately.
 
 Reports are stored, their public-safe status can be checked, and authorized demo
-staff can review them in the dashboard. Notification delivery and the dedicated
-security review remain later phases. Use fictional demo data; this is not an
-emergency service.
+staff can review them in the dashboard. The report, initial history entry, and
+generic new-report notifications for current teachers and administrators are saved
+atomically. The dedicated security review remains a later phase. Use fictional
+demo data; this is not an emergency service.
 
 ## Report status
 
@@ -309,7 +313,37 @@ content. Status changes reauthenticate inside the Server Action, permit only the
 documented forward transitions, accept an optional trimmed 2,000-character note, and
 use an optimistic status guard inside the same transaction as history creation.
 Simultaneous reviewers therefore produce one update and one safe conflict response.
-Notification creation remains Phase 7 and is intentionally not coupled to this flow.
+An eligible linked reporter's status notification is created inside that same
+transaction, so the status, history, and alert cannot be partially committed.
+
+## Notifications
+
+`/dashboard/notifications` is a protected staff inbox showing the current user's
+50 newest alerts in deterministic newest-first order. It includes explicit read and
+unread labels, per-alert read-state controls, a mark-all-read action, links to the
+related authorized report, and an unread badge in desktop and mobile dashboard
+navigation. The badge displays `99+` visually above 99 while retaining the full
+count in its accessible label.
+
+Submitting a report creates a generic `NEW_REPORT` notification for each current
+teacher and administrator. Status changes create a generic `STATUS_UPDATED`
+notification only when the report is nonanonymous and has a linked `reporterId`.
+Alert text never copies the report description, location, reporter name, or internal
+staff note.
+
+Public report submissions deliberately never link an account: a supplied
+`reporterName` is report-local, unverified text and is not a notification delivery
+identity. Consequently those submissions rely on reference-number status lookup.
+Linked demo/imported student reports can receive persisted status notifications,
+but this MVP does not include student authentication or a student-facing inbox.
+
+Notification reads and unread counts are scoped by the authenticated recipient in
+the database query. Read-state Server Actions reauthenticate independently and
+update only rows matching both the submitted notification ID and the current staff
+ID; clients cannot choose a recipient or timestamp. Successful actions revalidate
+the dashboard layout so the inbox and badge reflect the change together. New alerts
+from another session appear after the explicit inbox refresh or another full-page
+request. The MVP uses no WebSockets, background polling, or other live push channel.
 
 ## Dependency maintenance
 
@@ -332,12 +366,12 @@ npm run db:check
 npm run build
 ```
 
-Phase 6 validation passed: lint, TypeScript, all 95 tests, Prisma validation/migration
-status/connection checks, production build, and live HTTP checks for authorization,
-login, metrics, filters, details, atomic status history, public tracker synchronization,
-and logout. Temporary live-verification data was deleted after the check. Browser
-interaction and responsive rendering for Phases 4–6 remain pending because Computer
-Use returned no available browsers.
+Phase 7 validation passed: lint, TypeScript, all 102 tests, Prisma validation/migration
+status/connection checks, and the production build. Live HTTP checks confirmed the
+protected inbox, a newly submitted report alert, and the unread badge increment; the
+temporary report and its cascading notifications were deleted afterward. Browser
+interaction and responsive rendering for Phases 4–7 remain pending and are part of
+Phase 8.
 
 The relation-loading integration test currently emits a non-failing pg 8 warning
 because Prisma issues included relation reads concurrently on a transaction client.
