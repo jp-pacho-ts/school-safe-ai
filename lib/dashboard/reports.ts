@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { STATUS_UPDATED_NOTIFICATION } from "@/lib/notifications/notifications";
 import {
   dashboardReportIdSchema,
   dashboardReportListInputSchema,
@@ -471,7 +472,12 @@ export async function updateDashboardReportStatus(
       async (tx): Promise<TransactionStatusUpdateResult> => {
         const existing = await tx.report.findUnique({
           where: { id: input.reportId },
-          select: { id: true, status: true },
+          select: {
+            id: true,
+            status: true,
+            isAnonymous: true,
+            reporterId: true,
+          },
         });
         if (!existing) return { outcome: "not_found" };
         if (existing.status !== input.currentStatus) {
@@ -496,6 +502,16 @@ export async function updateDashboardReportStatus(
           },
           select: dashboardHistoryEntrySelect,
         });
+        if (!existing.isAnonymous && existing.reporterId) {
+          await tx.notification.create({
+            data: {
+              recipientId: existing.reporterId,
+              reportId: input.reportId,
+              ...STATUS_UPDATED_NOTIFICATION,
+            },
+            select: { id: true },
+          });
+        }
         return { outcome: "updated", historyEntry };
       },
     );

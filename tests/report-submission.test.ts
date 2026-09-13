@@ -7,7 +7,7 @@ import { loadEnvConfig } from "@next/env";
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
 import type { ReportInput } from "../lib/reports/validation";
 
-type ReportDatabase = Pick<PrismaClient, "report">;
+type ReportDatabase = Pick<PrismaClient, "report" | "user">;
 type ReportingService = typeof import("../lib/reports/submit");
 
 let prisma: typeof import("../lib/prisma")["prisma"] | undefined;
@@ -88,6 +88,7 @@ async function expectDatabaseRejection(
 function mockDatabase(handlers: {
   findUnique?: (args: Prisma.ReportFindUniqueArgs) => Promise<unknown>;
   create?: (args: Prisma.ReportCreateArgs) => Promise<unknown>;
+  findStaff?: (args: Prisma.UserFindManyArgs) => Promise<unknown>;
 }): ReportDatabase {
   const unexpectedQuery = async () => {
     throw new Error("Unexpected database query in this test.");
@@ -98,6 +99,9 @@ function mockDatabase(handlers: {
     report: {
       findUnique: handlers.findUnique ?? unexpectedQuery,
       create: handlers.create ?? unexpectedQuery,
+    },
+    user: {
+      findMany: handlers.findStaff ?? (async () => []),
     },
   } as unknown as ReportDatabase;
 }
@@ -164,8 +168,34 @@ test("stores an anonymous report and its initial history without a name or accou
       location: "  Fictional test hallway  ",
       reporterName: "This supplied name must be discarded",
     };
+    const staffRecipients = [
+      {
+        id: randomUUID(),
+        email: `submission-teacher-${randomUUID()}@example.invalid`,
+        name: "Fictional Submission Teacher",
+        role: "TEACHER" as const,
+      },
+      {
+        id: randomUUID(),
+        email: `submission-admin-${randomUUID()}@example.invalid`,
+        name: "Fictional Submission Administrator",
+        role: "ADMIN" as const,
+      },
+    ];
+    await tx.user.createMany({ data: staffRecipients });
     const userCount = await tx.user.count();
-    const result = await service().submitReport(input, tx);
+    const db = mockDatabase({
+      findUnique: (args) => tx.report.findUnique(args),
+      create: (args) => tx.report.create(args),
+      findStaff: async (args) => {
+        assert.deepEqual(args, {
+          where: { role: { in: ["TEACHER", "ADMIN"] } },
+          select: { id: true },
+        });
+        return staffRecipients.map(({ id }) => ({ id }));
+      },
+    });
+    const result = await service().submitReport(input, db);
     assert.ok(result.ok);
     assert.equal(result.replayed, false);
     assert.equal(result.submissionKey, input.submissionKey);
@@ -191,7 +221,27 @@ test("stores an anonymous report and its initial history without a name or accou
     assert.equal(history[0].changedById, null);
     assert.ok(history[0].createdAt instanceof Date);
     assert.equal(await tx.user.count(), userCount);
-    assert.equal(await tx.notification.count({ where: { reportId: report.id } }), 0);
+    const notifications = await tx.notification.findMany({
+      where: { reportId: report.id },
+      orderBy: { recipientId: "asc" },
+    });
+    assert.deepEqual(
+      notifications.map(({ recipientId }) => recipientId),
+      staffRecipients.map(({ id }) => id).sort(),
+    );
+    for (const notification of notifications) {
+      assert.equal(notification.type, "NEW_REPORT");
+      assert.equal(notification.title, "New safety report");
+      assert.equal(
+        notification.message,
+        "A new report is ready for authorized staff review.",
+      );
+      assert.equal(notification.readAt, null);
+      assert.doesNotMatch(
+        `${notification.title} ${notification.message}`,
+        /hallway light|fictional test hallway/i,
+      );
+    }
   });
 });
 
@@ -229,6 +279,9 @@ test("replaying normalized details returns the same reference without another re
     };
     const first = await service().submitReport(input, tx);
     assert.ok(first.ok);
+    const notificationCountAfterFirst = await tx.notification.count({
+      where: { report: { submissionKey: input.submissionKey } },
+    });
     const replay = await service().submitReport({
       ...input,
       submissionKey: input.submissionKey.toUpperCase(),
@@ -244,6 +297,10 @@ test("replaying normalized details returns the same reference without another re
       where: { submissionKey: input.submissionKey },
     });
     assert.equal(await tx.reportStatusHistory.count({ where: { reportId: report.id } }), 1);
+    assert.equal(
+      await tx.notification.count({ where: { reportId: report.id } }),
+      notificationCountAfterFirst,
+    );
   });
 });
 
@@ -358,6 +415,12 @@ test("masks database lookup and write failures", async () => {
     create: async () => { throw privateFailure; },
   });
   assertUnavailable(await service().submitReport(reportInput(), failingWrite));
+
+  const failingRecipientLookup = mockDatabase({
+    findUnique: async () => null,
+    findStaff: async () => { throw privateFailure; },
+  });
+  assertUnavailable(await service().submitReport(reportInput(), failingRecipientLookup));
 });
 
 test("a failed initial history insert leaves no partially saved report", async () => {
@@ -384,6 +447,30 @@ test("a failed initial history insert leaves no partially saved report", async (
     assert.equal(await database().reportStatusHistory.count({ where: { reportId } }), 0);
   } finally {
     // Clean only this test's random fixture if atomicity ever regresses.
+    await database().report.deleteMany({
+      where: { id: reportId, submissionKey: input.submissionKey },
+    });
+  }
+});
+
+test("a failed nested notification insert leaves no report or history", async () => {
+  const input = reportInput();
+  const reportId = randomUUID();
+  const missingRecipientId = randomUUID();
+  const db = mockDatabase({
+    findUnique: (args) => database().report.findUnique(args),
+    findStaff: async () => [{ id: missingRecipientId }],
+    create: (args) => database().report.create({
+      ...args,
+      data: { ...args.data, id: reportId },
+    }),
+  });
+  try {
+    assertUnavailable(await service().submitReport(input, db));
+    assert.equal(await database().report.findUnique({ where: { id: reportId } }), null);
+    assert.equal(await database().reportStatusHistory.count({ where: { reportId } }), 0);
+    assert.equal(await database().notification.count({ where: { reportId } }), 0);
+  } finally {
     await database().report.deleteMany({
       where: { id: reportId, submissionKey: input.submissionKey },
     });

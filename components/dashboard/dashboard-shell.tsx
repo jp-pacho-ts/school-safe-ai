@@ -14,9 +14,11 @@ export interface DashboardStaffSummary {
 export function DashboardShell({
   children,
   staff,
+  unreadNotificationCount,
 }: {
   children: ReactNode;
   staff: DashboardStaffSummary;
+  unreadNotificationCount: number;
 }) {
   return (
     <div className={styles.dashboardRoot}>
@@ -39,7 +41,7 @@ export function DashboardShell({
           <span>School Safe <span>AI</span></span>
         </Link>
         <p className={styles.workspaceLabel}>Staff workspace</p>
-        <DashboardNav />
+        <DashboardNav unreadNotificationCount={unreadNotificationCount} />
         <div className={styles.sidebarFooter}>
           <div className={styles.staffIdentity}>
             <span className={styles.staffAvatar} aria-hidden="true">
@@ -55,7 +57,9 @@ export function DashboardShell({
       </aside>
 
       <div className={styles.dashboardColumn}>
-        <div className={styles.mobileNavWrap}><DashboardNav /></div>
+        <div className={styles.mobileNavWrap}>
+          <DashboardNav unreadNotificationCount={unreadNotificationCount} />
+        </div>
         <main id="dashboard-main" tabIndex={-1} className={styles.dashboardMain}>
           {children}
         </main>

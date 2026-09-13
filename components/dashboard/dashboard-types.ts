@@ -105,6 +105,31 @@ export interface DashboardReportPage {
   filters: DashboardReportFilters;
 }
 
+export type DashboardNotificationType = "NEW_REPORT" | "STATUS_UPDATED";
+
+export interface DashboardNotification {
+  id: string;
+  type: DashboardNotificationType;
+  title: string;
+  message: string;
+  createdAt: string;
+  readAt: string | null;
+  report: {
+    id: string;
+    referenceNumber: string;
+  };
+}
+
+export interface NotificationActionState {
+  outcome: "idle" | "success" | "error";
+  message: string;
+}
+
+export type NotificationAction = (
+  previousState: NotificationActionState,
+  formData: FormData,
+) => Promise<NotificationActionState>;
+
 export type StatusUpdateField = "status" | "note" | "form";
 
 export interface StatusUpdateFormState {
